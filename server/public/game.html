@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>俄罗斯方块游戏</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .game-container {
+            display: none;
+            gap: 30px;
+        }
+
+        .game-container.active {
+            display: flex;
+        }
+
+        .game-board {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+        }
+
+        #gameCanvas {
+            border: 3px solid #667eea;
+            border-radius: 8px;
+            background: #000;
+            display: block;
+        }
+
+        .side-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .info-panel {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+        }
+
+        .info-panel h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .stat-label {
+            color: #666;
+            font-weight: 500;
+        }
+
+        .stat-value {
+            color: #333;
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+
+        .next-piece-canvas {
+            background: #f5f5f5;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            display: block;
+            margin: 0 auto;
+        }
+
+        .controls {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        .controls h4 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .controls p {
+            margin: 5px 0;
+        }
+
+        .leaderboard-mini {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .leaderboard-item {
+            padding: 8px;
+            margin: 5px 0;
+            background: #f5f5f5;
+            border-radius: 6px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .leaderboard-item.current {
+            background: #e3f2fd;
+            border: 2px solid #667eea;
+        }
+
+        .rank {
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .rank-1 { color: #ffd700; }
+        .rank-2 { color: #c0c0c0; }
+        .rank-3 { color: #cd7f32; }
+
+        /* 注册界面 */
+        .register-container {
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+            text-align: center;
+            max-width: 400px;
+        }
+
+        .register-container.hidden {
+            display: none;
+        }
+
+        .register-container h1 {
+            color: #667eea;
+            margin-bottom: 30px;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+
+        .input-group label {
+            display: block;
+            color: #666;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .error-message {
+            color: #f44336;
+            font-size: 0.9em;
+            margin-top: 5px;
+            display: none;
+        }
+
+        .error-message.active {
+            display: block;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .btn:hover {
+            background: #5568d3;
+        }
+
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .btn-start {
+            background: #4caf50;
+            margin-top: 20px;
+        }
+
+        .btn-start:hover {
+            background: #45a049;
+        }
+
+        .game-over-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.8);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .game-over-overlay.active {
+            display: flex;
+        }
+
+        .game-over-content {
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            max-width: 400px;
+        }
+
+        .game-over-content h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 2em;
+        }
+
+        .final-stats {
+            margin: 20px 0;
+            padding: 20px;
+            background: #f5f5f5;
+            border-radius: 8px;
+        }
+
+        .final-stats .stat-item {
+            border: none;
+        }
+
+        .captcha-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.8);
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+
+        .captcha-overlay.active {
+            display: flex;
+        }
+
+        .captcha-content {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            text-align: center;
+            max-width: 350px;
+        }
+
+        .captcha-content h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+
+        .captcha-content p {
+            color: #666;
+            margin-bottom: 20px;
+        }
+
+        .captcha-image-container {
+            margin: 20px 0;
+        }
+
+        .captcha-image-container img {
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            max-width: 100%;
+        }
+
+        .captcha-input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .captcha-input-group input {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 1.2em;
+            text-align: center;
+            letter-spacing: 5px;
+        }
+
+        .captcha-input-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .captcha-error {
+            color: #f44336;
+            font-size: 0.9em;
+            margin-bottom: 15px;
+            min-height: 20px;
+        }
+
+        .captcha-hint {
+            font-size: 0.8em;
+            color: #999;
+            margin-top: 15px;
+            margin-bottom: 0;
+        }
+    </style>
+</head>
+<body>
+    <!-- 注册界面 -->
+    <div class="register-container" id="registerContainer">
+        <h1>俄罗斯方块游戏厅</h1>
+        <div class="input-group">
+            <label for="nicknameInput">请输入你的昵称</label>
+            <input 
+                type="text" 
+                id="nicknameInput" 
+                placeholder="昵称（2-20个字符）"
+                maxlength="20"
+            >
+            <div class="error-message" id="nicknameError"></div>
+        </div>
+        <div class="input-group">
+            <label for="emailInput">请输入你的邮箱</label>
+            <input 
+                type="email" 
+                id="emailInput" 
+                placeholder="your@email.com"
+            >
+            <div class="error-message" id="emailError"></div>
+        </div>
+        <div style="margin: 10px 0; padding: 10px; background: #e3f2fd; border-radius: 6px; font-size: 0.85em; color: #666;">
+            <p style="margin: 0;">💡 提示：首次登录将绑定昵称和邮箱，下次登录需要使用相同的邮箱验证身份。</p>
+        </div>
+        <button class="btn" id="registerBtn" onclick="register()">登录/注册</button>
+    </div>
+
+    <!-- 游戏界面 -->
+    <div class="game-container" id="gameContainer">
+        <div class="game-board">
+            <canvas id="gameCanvas" width="300" height="600"></canvas>
+            <button class="btn btn-start" id="startBtn" onclick="startGame()">开始游戏</button>
+        </div>
+
+        <div class="side-panel">
+            <div class="info-panel">
+                <h3>游戏信息</h3>
+                <div class="stat-item">
+                    <span class="stat-label">玩家</span>
+                    <span class="stat-value" id="playerNickname">-</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">当前分数</span>
+                    <span class="stat-value" id="currentScore">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">历史最高分</span>
+                    <span class="stat-value" id="highestScore">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">全局排名</span>
+                    <span class="stat-value" id="globalRank">-</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">消除行数</span>
+                    <span class="stat-value" id="linesCleared">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">等级</span>
+                    <span class="stat-value" id="currentLevel">1</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">游戏时长</span>
+                    <span class="stat-value" id="gameDuration">00:00</span>
+                </div>
+            </div>
+
+            <div class="info-panel">
+                <h3>下一个方块</h3>
+                <canvas class="next-piece-canvas" id="nextPieceCanvas" width="120" height="120"></canvas>
+            </div>
+
+            <div class="info-panel">
+                <h3>排行榜 TOP 10</h3>
+                <div class="leaderboard-mini" id="leaderboardMini">
+                    <div style="text-align: center; color: #999; padding: 20px;">暂无数据</div>
+                </div>
+            </div>
+
+            <div class="info-panel">
+                <div class="controls">
+                    <h4>操作说明</h4>
+                    <p>← → : 左右移动</p>
+                    <p>↓ : 快速下落</p>
+                    <p>↑ : 旋转方块</p>
+                    <p>空格 : 直接落下</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 游戏结束界面 -->
+    <div class="game-over-overlay" id="gameOverOverlay">
+        <div class="game-over-content">
+            <h2>游戏结束!</h2>
+            <div class="final-stats">
+                <div class="stat-item">
+                    <span class="stat-label">最终得分</span>
+                    <span class="stat-value" id="finalScore">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">全局排名</span>
+                    <span class="stat-value" id="finalRank">-</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">历史最高分</span>
+                    <span class="stat-value" id="finalHighestScore">0</span>
+                </div>
+            </div>
+            <button class="btn btn-start" onclick="playAgain()">再玩一局</button>
+        </div>
+    </div>
+
+    <!-- 人机验证界面 -->
+    <div class="captcha-overlay" id="captchaOverlay">
+        <div class="captcha-content">
+            <h2>人机验证</h2>
+            <p>请输入图片中的验证码以继续游戏</p>
+            <div class="captcha-image-container">
+                <img id="captchaImage" src="" alt="验证码">
+            </div>
+            <div class="captcha-input-group">
+                <input type="text" id="captchaInput" maxlength="4" placeholder="请输入验证码" autocomplete="off">
+                <button class="btn" id="captchaRefreshBtn" onclick="refreshCaptcha()">刷新</button>
+            </div>
+            <div class="captcha-error" id="captchaError"></div>
+            <button class="btn" onclick="verifyCaptcha()">验证</button>
+            <p class="captcha-hint">验证码有效期2分钟</p>
+        </div>
+    </div>
+
+    <script src="tetris-game.js"></script>
+</body>
+</html>

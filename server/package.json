@@ -1,0 +1,22 @@
+{
+  "name": "hackson",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "test": "node test-storage.js",
+    "test:storage": "node test-storage.js",
+    "backup": "curl -X POST http://localhost:3001/api/storage/backup",
+    "stats": "curl http://localhost:3001/api/storage/stats"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^5.2.1",
+    "ws": "^8.19.0"
+  }
+}

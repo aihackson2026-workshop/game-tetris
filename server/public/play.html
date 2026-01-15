@@ -1,0 +1,1088 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tetris Game API Demo - LLM Playable</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Arial', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            color: #fff;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, #00d4ff, #7b2cbf);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 30px;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 20px;
+        }
+
+        .game-section {
+            background: rgba(255,255,255,0.05);
+            border-radius: 15px;
+            padding: 20px;
+        }
+
+        .game-frame-container {
+            position: relative;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+        }
+
+        #gameFrame {
+            width: 100%;
+            max-width: 700px;
+            height: 700px;
+            border: none;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        }
+
+        .control-section {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .panel {
+            background: rgba(255,255,255,0.05);
+            border-radius: 15px;
+            padding: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .panel h2 {
+            font-size: 1.2em;
+            margin-bottom: 15px;
+            color: #00d4ff;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding-bottom: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #aaa;
+            font-size: 0.9em;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            background: rgba(0,0,0,0.3);
+            color: #fff;
+            font-size: 1em;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #00d4ff;
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 600;
+            transition: all 0.3s;
+            flex: 1;
+            min-width: 80px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #00d4ff, #0099cc);
+            color: #fff;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0,212,255,0.4);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #00ff88, #00cc6a);
+            color: #000;
+        }
+
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0,255,136,0.4);
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, #ffaa00, #cc8800);
+            color: #000;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ff4466, #cc3355);
+            color: #fff;
+        }
+
+        .btn-info {
+            background: linear-gradient(135deg, #7b2cbf, #5a1f8f);
+            color: #fff;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .console {
+            background: #0d1117;
+            border-radius: 8px;
+            padding: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 0.85em;
+        }
+
+        .console-line {
+            margin-bottom: 5px;
+            padding: 5px;
+            border-radius: 4px;
+        }
+
+        .console-line.log {
+            background: rgba(0,212,255,0.1);
+            color: #00d4ff;
+        }
+
+        .console-line.success {
+            background: rgba(0,255,136,0.1);
+            color: #00ff88;
+        }
+
+        .console-line.error {
+            background: rgba(255,68,102,0.1);
+            color: #ff4466;
+        }
+
+        .console-line.info {
+            background: rgba(123,44,191,0.1);
+            color: #b088d4;
+        }
+
+        .state-display {
+            background: rgba(0,0,0,0.3);
+            border-radius: 8px;
+            padding: 15px;
+            font-family: monospace;
+            font-size: 0.85em;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .state-display pre {
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .quick-actions {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+
+        .quick-actions .btn {
+            padding: 10px;
+            font-size: 0.85em;
+        }
+
+        .captcha-section {
+            display: none;
+            background: rgba(255,255,255,0.05);
+            border-radius: 15px;
+            padding: 20px;
+            margin-top: 15px;
+        }
+
+        .captcha-section.active {
+            display: block;
+        }
+
+        .captcha-section h3 {
+            color: #ffaa00;
+            margin-bottom: 15px;
+        }
+
+        .captcha-image {
+            display: block;
+            max-width: 200px;
+            margin: 15px auto;
+            border: 2px solid #ffaa00;
+            border-radius: 8px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 15px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding-bottom: 10px;
+        }
+
+        .tab {
+            padding: 8px 16px;
+            background: transparent;
+            border: none;
+            color: #888;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+
+        .tab.active {
+            background: rgba(0,212,255,0.2);
+            color: #00d4ff;
+        }
+
+        .tab:hover {
+            color: #fff;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .doc-section {
+            margin-bottom: 20px;
+        }
+
+        .doc-section h3 {
+            color: #00d4ff;
+            margin-bottom: 10px;
+        }
+
+        .doc-section p {
+            color: #aaa;
+            line-height: 1.6;
+            margin-bottom: 10px;
+        }
+
+        .code-block {
+            background: #0d1117;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 0.85em;
+            overflow-x: auto;
+            color: #c9d1d9;
+            margin: 10px 0;
+        }
+
+        .api-list {
+            list-style: none;
+        }
+
+        .api-list li {
+            padding: 10px;
+            background: rgba(0,0,0,0.2);
+            margin-bottom: 8px;
+            border-radius: 6px;
+            border-left: 3px solid #00d4ff;
+        }
+
+        .api-list li strong {
+            color: #00d4ff;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-indicator.connected {
+            background: #00ff88;
+            box-shadow: 0 0 10px #00ff88;
+        }
+
+        .status-indicator.disconnected {
+            background: #ff4466;
+            box-shadow: 0 0 10px #ff4466;
+        }
+
+        .keyboard-hint {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .keyboard-hint span {
+            font-size: 0.8em;
+            color: #666;
+        }
+
+        .keyboard-hint kbd {
+            background: rgba(255,255,255,0.1);
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-right: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎮 Tetris Game API Demo</h1>
+        <p class="subtitle">LLM 可编程俄罗斯方块 - 通过 API 控制游戏</p>
+
+        <div class="main-content">
+            <div class="game-section">
+                <div class="game-frame-container">
+                    <iframe id="gameFrame" src="http://127.0.0.1:3001/game.html"></iframe>
+                </div>
+
+                <!-- CAPTCHA Section -->
+                <div class="captcha-section" id="captchaSection">
+                    <h3>⚠️ 人机验证</h3>
+                    <p>请输入图片中的验证码以继续游戏</p>
+                    <img id="captchaImage" class="captcha-image" src="" alt="验证码">
+                    <div class="form-group">
+                        <input type="text" id="captchaInput" maxlength="4" placeholder="输入验证码">
+                    </div>
+                    <div class="btn-row">
+                        <button class="btn btn-warning" onclick="submitCaptcha()">提交验证</button>
+                        <button class="btn btn-info" onclick="refreshCaptcha()">刷新验证码</button>
+                    </div>
+                    <p id="captchaError" style="color: #ff4466; margin-top: 10px;"></p>
+                </div>
+            </div>
+
+            <div class="control-section">
+                <!-- Connection Status -->
+                <div class="panel">
+                    <h2>
+                        <span class="status-indicator disconnected" id="statusIndicator"></span>
+                        <span id="statusText">未连接</span>
+                    </h2>
+                    <div class="btn-row" style="margin-top: 15px;">
+                        <button class="btn btn-primary" id="initSdkBtn" onclick="initSDK()">初始化 SDK</button>
+                        <button class="btn btn-success" id="startAutoPlayBtn" onclick="startAutoPlay()">自动演示</button>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="panel">
+                    <h2>游戏控制</h2>
+                    <p style="color: #888; font-size: 0.9em; margin-bottom: 15px;">
+                        请先在游戏内注册/登录开始游戏，然后使用下方按钮或键盘控制
+                    </p>
+                    <div class="quick-actions">
+                        <button class="btn btn-primary" onclick="moveLeft()">← 左移</button>
+                        <button class="btn btn-primary" onclick="moveRight()">右移 →</button>
+                        <button class="btn btn-primary" onclick="moveDown()">↓ 下落</button>
+                        <button class="btn btn-warning" onclick="hardDrop()">落到底</button>
+                        <button class="btn btn-info" onclick="rotate()">↻ 旋转</button>
+                    </div>
+                    <div class="quick-actions" style="margin-top: 10px;">
+                        <button class="btn btn-success" onclick="startGame()">开始游戏</button>
+                        <button class="btn btn-danger" onclick="endGame()">结束游戏</button>
+                    </div>
+                    <div class="quick-actions" style="margin-top: 10px;">
+                        <button class="btn btn-warning" onclick="pauseGame()">暂停游戏</button>
+                        <button class="btn btn-primary" onclick="resumeGame()">继续游戏</button>
+                    </div>
+                    <div class="keyboard-hint">
+                        <span><kbd>Q</kbd> 左移</span>
+                        <span><kbd>E</kbd> 右移</span>
+                        <span><kbd>S</kbd> 下落</span>
+                        <span><kbd>空格</kbd> 落到底</span>
+                        <span><kbd>W</kbd> 旋转</span>
+                        <span><kbd>Enter</kbd> 开始</span>
+                        <span><kbd>P</kbd> 暂停</span>
+                        <span><kbd>Esc</kbd> 结束</span>
+                    </div>
+                </div>
+
+                <!-- State Display -->
+                <div class="panel">
+                    <h2>游戏状态</h2>
+                    <div class="state-display" id="stateDisplay">
+                        <pre id="stateContent">等待初始化...</pre>
+                    </div>
+                    <div class="btn-row" style="margin-top: 10px;">
+                        <button class="btn btn-info" onclick="refreshState()">刷新状态</button>
+                        <button class="btn btn-info" onclick="getBoardState()">查看棋盘</button>
+                    </div>
+                </div>
+
+                <!-- Console -->
+                <div class="panel">
+                    <h2>控制台输出</h2>
+                    <div class="console" id="console">
+                        <div class="console-line info">系统就绪，请初始化 SDK</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Documentation -->
+        <div class="panel" style="margin-top: 20px;">
+            <div class="tabs">
+                <button class="tab active" onclick="showDoc('overview', event)">概述</button>
+                <button class="tab" onclick="showDoc('api', event)">API 参考</button>
+                <button class="tab" onclick="showDoc('example', event)">代码示例</button>
+                <button class="tab" onclick="showDoc('coordinates', event)">坐标系</button>
+            </div>
+
+            <div id="doc-overview" class="tab-content active">
+                <div class="doc-section">
+                    <h3>🎮 Tetris Game API 概述</h3>
+                    <p>这是一个可以让大语言模型（LLM）通过 JavaScript API 控制俄罗斯方块游戏的接口。通过这个 API，你可以：</p>
+                    <ul style="margin: 15px 0; padding-left: 20px; color: #aaa; line-height: 2;">
+                        <li>查询游戏状态（棋盘、分数、方块等）</li>
+                        <li>控制方块移动、旋转、落下</li>
+                        <li>处理人机验证挑战</li>
+                        <li>监听游戏事件（游戏结束、分数变化等）</li>
+                    </ul>
+                    <p style="color: #888;">
+                        <strong>工作原理：</strong>游戏运行在 iframe 中，SDK 通过 postMessage 与游戏通信。玩家注册/登录在游戏内界面完成。
+                    </p>
+                </div>
+
+                <div class="doc-section">
+                    <h3>🚀 快速开始</h3>
+                    <p>只需 3 行代码即可开始控制游戏：</p>
+                    <div class="code-block">
+const tetris = new TetrisGameSDK(document.getElementById('gameFrame'));
+await tetris.init();
+const state = await tetris.getGameState();
+console.log('当前分数:', state.score);</div>
+                    <p style="color: #888; margin-top: 10px;">
+                        注意：玩家注册/登录需在游戏内界面完成，SDK 仅用于查询状态和控制游戏
+                    </p>
+                </div>
+
+                <div class="doc-section">
+                    <h3>📋 嵌入游戏</h3>
+                    <div class="code-block">
+&lt;iframe id="gameFrame" src="http://localhost:3001/game.html" width="700" height="700"&gt;&lt;/iframe&gt;
+&lt;script src="http://localhost:3001/tetris-sdk.js"&gt;&lt;/script&gt;</div>
+                </div>
+            </div>
+
+            <div id="doc-api" class="tab-content">
+                <div class="doc-section">
+                    <h3>📖 API 方法列表</h3>
+                    <ul class="api-list">
+                        <li><strong>init()</strong> - 初始化 SDK，连接游戏</li>
+                        <li><strong>getGameState()</strong> - 获取完整游戏状态</li>
+                        <li><strong>getBoardState()</strong> - 获取棋盘详细状态</li>
+                        <li><strong>moveLeft()</strong> - 方块左移</li>
+                        <li><strong>moveRight()</strong> - 方块右移</li>
+                        <li><strong>moveDown()</strong> - 方块下移</li>
+                        <li><strong>hardDrop()</strong> - 方块直接落到底</li>
+                        <li><strong>rotate()</strong> - 旋转方块</li>
+                        <li><strong>submitCaptcha(captchaId, code)</strong> - 提交验证码</li>
+                        <li><strong>on(event, callback)</strong> - 监听游戏事件</li>
+                    </ul>
+                    <p style="color: #888; font-size: 0.9em; margin-top: 15px;">
+                        <strong>注意：</strong>玩家注册/登录请在游戏内界面完成
+                    </p>
+                </div>
+
+                <div class="doc-section">
+                    <h3>📊 状态响应格式</h3>
+                    <p>getGameState() 返回：</p>
+                    <div class="code-block">
+{
+    status: "playing",      // playing | finished | waiting
+    score: 0,               // 当前分数
+    lines: 0,               // 消除行数
+    level: 1,               // 当前等级
+    currentScore: 0,
+    highestScore: 5000,     // 历史最高分
+    board: [...],           // 20x10 棋盘数组
+    currentPiece: {...},    // 当前下落方块
+    nextPiece: {...},       // 下一个方块
+    captchaRequired: false, // 是否需要验证码
+    captchaId: null         // 验证码 ID
+}</div>
+                </div>
+
+                <div class="doc-section">
+                    <h3>🎯 方块类型</h3>
+                    <p>棋盘方块类型：<strong>I, O, T, S, Z, J, L</strong></p>
+                    <div class="code-block" style="margin-top: 15px;">
+I (青色):   O (黄色):   T (紫色):   S (绿色):   Z (红色):   J (蓝色):   L (橙色):
+####       ##         .#.        .##        ##.        #..        ..#
+####       ##         ###        ##.        .##        ###        ###
+                                           ..#        #..
+                                           #..
+注意：# 表示方块，. 表示空白
+                    </div>
+                    <p style="margin-top: 10px; color: #888; font-size: 0.9em;">
+                        所有方块围绕左上角旋转 90°
+                    </p>
+                </div>
+
+                <div class="doc-section">
+                    <h3>🎯 currentPiece.shape 旋转矩阵</h3>
+                    <p>方块的 <code>shape</code> 是一个二维数组，表示当前的旋转状态：</p>
+                    <div class="code-block">
+// 形状示例 T 方块
+shape: [[0,1,0],  // 第0行: .#.
+        [1,1,1]]  // 第1行: ###
+
+// 旋转90°后
+shape: [[1,0],    // 第0行: #.
+        [1,1],    // 第1行: ##
+        [1,0]]    // 第2行: #.
+
+// 使用 shape 判断方向
+const rows = piece.shape.length;
+const cols = piece.shape[0].length;
+console.log(`方块尺寸: ${cols}x${rows}`);
+
+// I 型方块横放 (4x1)
+shape: [[1,1,1,1]]
+
+// I 型方块竖放 (1x4)
+shape: [[1],
+        [1],
+        [1],
+        [1]]
+                    </div>
+                    <p style="margin-top: 10px; color: #888; font-size: 0.9em;">
+                        数组中的 1 表示方块位置，0 表示空白。旋转时会直接修改此矩阵。
+                    </p>
+                </div>
+            </div>
+
+            <div id="doc-example" class="tab-content">
+                <div class="doc-section">
+                    <h3>🤖 简单 AI 示例</h3>
+                    <p>一个能自动玩俄罗斯方块的简单 AI：</p>
+                    <div class="code-block">
+const iframe = document.getElementById('gameFrame');
+const tetris = new TetrisGameSDK(iframe);
+
+async function runBot() {
+    await tetris.init();
+    
+    while (true) {
+        const state = await tetris.getGameState();
+        
+        if (state.status !== 'playing') {
+            // 等待玩家在游戏内注册并开始
+            console.log('等待游戏开始...');
+            await delay(2000);
+            continue;
+        }
+        
+        if (state.captchaRequired) {
+            await handleCaptcha(state.captchaId);
+            continue;
+        }
+        
+        // AI 决策：简单的策略
+        const decision = analyzeState(state);
+        
+        switch (decision) {
+            case 'left': await tetris.moveLeft(); break;
+            case 'right': await tetris.moveRight(); break;
+            case 'down': await tetris.moveDown(); break;
+            case 'drop': await tetris.hardDrop(); break;
+            case 'rotate': await tetris.rotate(); break;
+        }
+        
+        await delay(200); // 模拟人类速度
+    }
+}
+
+function analyzeState(state) {
+    // 这里实现你的 AI 策略
+    return 'down'; // 默认下移
+}
+
+function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+runBot();</div>
+                    <p style="color: #888; font-size: 0.9em; margin-top: 10px;">
+                        提示：请先在游戏内完成注册/登录，AI 会在游戏开始后自动接管
+                    </p>
+                </div>
+
+                <div class="doc-section">
+                    <h3>📝 事件监听示例</h3>
+                    <div class="code-block">
+// 监听游戏结束
+tetris.on('gameOver', (data) => {
+    console.log(`游戏结束！得分: ${data.score}, 排名: ${data.rank}`);
+});
+
+// 监听分数更新
+tetris.on('scoreUpdate', (data) => {
+    console.log(`分数: ${data.score}, 等级: ${data.level}`);
+});
+
+// 监听验证码挑战
+tetris.on('captchaRequired', (data) => {
+    console.log('需要验证码:', data.captchaId);
+    const imageUrl = tetris.getCaptchaImageUrl(data.captchaId);
+    // 使用 OCR 识别或人工输入
+});</div>
+                </div>
+            </div>
+
+            <div id="doc-coordinates" class="tab-content">
+                <div class="doc-section">
+                    <h3>📐 坐标系说明</h3>
+                    <p>游戏棋盘大小：<strong>20 行 × 10 列</strong></p>
+                    <div class="code-block">
+坐标系 (x, y)：
+    (0,0) ──────► X 轴 (0-9)
+       │
+       │
+       │
+       ▼ Y 轴 (0-19)
+
+行 0: 棋盘顶部
+行 19: 棋盘底部
+
+列 0: 左侧边缘
+列 9: 右侧边缘
+
+方块位置 (x, y)：
+- x: 水平位置（列索引）
+- y: 垂直位置（行索引，向下递增）
+
+示例：方块在位置 {x: 3, y: 5}
+意味着方块形状矩阵从第5行、第3列开始</div>
+                </div>
+
+                <div class="doc-section">
+                    <h3>🔄 方块旋转</h3>
+                    <p>方块顺时针旋转 90 度，位置保持不变：</p>
+                    <div class="code-block">
+旋转前：              旋转后：
+[[0,1,0],            [[0,0,1],
+ [1,1,1],     →       [1,1,1],
+ [0,0,0]]             [0,0,1]]
+
+如果旋转导致碰撞，方块保持原位不变</div>
+                </div>
+
+                <div class="doc-section">
+                    <h3>📏 返回值说明</h3>
+                    <p>移动操作返回：</p>
+                    <div class="code-block">
+{
+    success: true,   // 是否成功移动
+    x: 3,            // 新的 X 位置（左右移动）
+    y: 5             // 新的 Y 位置（下落）
+}
+
+如果 success 为 false，表示碰撞或边界阻挡，方块位置不变</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="tetris-sdk.js"></script>
+    <script>
+        // Global variables
+        let tetris = null;
+        let currentCaptchaId = null;
+        let isSdkReady = false;
+
+        // Console logging
+        function log(message, type = 'log') {
+            const consoleEl = document.getElementById('console');
+            const line = document.createElement('div');
+            line.className = `console-line ${type}`;
+            line.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            consoleEl.appendChild(line);
+            consoleEl.scrollTop = consoleEl.scrollHeight;
+            console.log(message);
+        }
+
+        function showDoc(sectionId, evt) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            (evt || event).target.classList.add('active');
+            document.getElementById('doc-' + sectionId).classList.add('active');
+        }
+
+        // Initialize SDK
+        async function initSDK() {
+            const statusIndicator = document.getElementById('statusIndicator');
+            const statusText = document.getElementById('statusText');
+            
+            try {
+                const iframe = document.getElementById('gameFrame');
+                tetris = new TetrisGameSDK(iframe);
+                
+                log('正在初始化 SDK...', 'info');
+                statusText.textContent = '初始化中...';
+                
+                await tetris.init();
+                isSdkReady = true;
+                
+                statusIndicator.className = 'status-indicator connected';
+                statusText.textContent = '已连接';
+                
+                log('SDK 初始化成功！', 'success');
+                
+                // Set up event listeners
+                setupEventListeners();
+                
+                // Refresh initial state
+                refreshState();
+            } catch (error) {
+                log('SDK 初始化失败: ' + error.message, 'error');
+                statusIndicator.className = 'status-indicator disconnected';
+                statusText.textContent = '连接失败';
+            }
+        }
+
+        // Movement functions
+        async function moveLeft() {
+            if (!isSdkReady) return log('请先初始化 SDK', 'error');
+            try {
+                const result = await tetris.moveLeft();
+                log(`左移: ${result.success ? '成功' : '失败'}`, result.success ? 'success' : 'error');
+                refreshState();
+            } catch (error) {
+                log('左移失败: ' + error.message, 'error');
+            }
+        }
+
+        async function moveRight() {
+            if (!isSdkReady) return log('请先初始化 SDK', 'error');
+            try {
+                const result = await tetris.moveRight();
+                log(`右移: ${result.success ? '成功' : '失败'}`, result.success ? 'success' : 'error');
+                refreshState();
+            } catch (error) {
+                log('右移失败: ' + error.message, 'error');
+            }
+        }
+
+        async function moveDown() {
+            if (!isSdkReady) return log('请先初始化 SDK', 'error');
+            try {
+                const result = await tetris.moveDown();
+                log(`下落: ${result.success ? '成功' : '失败'}`, result.success ? 'success' : 'error');
+                refreshState();
+            } catch (error) {
+                log('下落失败: ' + error.message, 'error');
+            }
+        }
+
+        async function hardDrop() {
+            if (!isSdkReady) return log('请先初始化 SDK', 'error');
+            try {
+                const result = await tetris.hardDrop();
+                log(`硬落下: ${result.success ? '成功' : '失败'}`, result.success ? 'success' : 'error');
+                refreshState();
+            } catch (error) {
+                log('硬落下失败: ' + error.message, 'error');
+            }
+        }
+
+        async function rotate() {
+            if (!isSdkReady) return log('请先初始化 SDK', 'error');
+            try {
+                const result = await tetris.rotate();
+                log(`旋转: ${result.success ? '成功' : '失败'}`, result.success ? 'success' : 'error');
+                refreshState();
+            } catch (error) {
+                log('旋转失败: ' + error.message, 'error');
+            }
+        }
+
+        // Start game
+        async function startGame() {
+            if (!isSdkReady) return log('请先初始化 SDK', 'error');
+            try {
+                const result = await tetris.startGame();
+                log('游戏已开始', 'success');
+                refreshState();
+            } catch (error) {
+                log('开始游戏失败: ' + error.message, 'error');
+            }
+        }
+
+        // End game
+        async function endGame() {
+            if (!isSdkReady) return log('请先初始化 SDK', 'error');
+            try {
+                const result = await tetris.endGame();
+                log('游戏已结束', 'info');
+                refreshState();
+            } catch (error) {
+                log('结束游戏失败: ' + error.message, 'error');
+            }
+        }
+
+        // Pause game
+        async function pauseGame() {
+            if (!isSdkReady) return log('请先初始化 SDK', 'error');
+            try {
+                const result = await tetris.pauseGame();
+                log('游戏已暂停', 'warning');
+                refreshState();
+            } catch (error) {
+                log('暂停失败: ' + error.message, 'error');
+            }
+        }
+
+        // Resume game
+        async function resumeGame() {
+            if (!isSdkReady) return log('请先初始化 SDK', 'error');
+            try {
+                const result = await tetris.resumeGame();
+                log('游戏已继续', 'success');
+                refreshState();
+            } catch (error) {
+                log('继续失败: ' + error.message, 'error');
+            }
+        }
+
+        // Restart game - removed, replaced with startGame/endGame
+        function restartGame() {
+            log('请使用"开始游戏"和"结束游戏"按钮', 'info');
+        }
+
+        // Refresh state display
+        async function refreshState() {
+            if (!isSdkReady) {
+                document.getElementById('stateContent').textContent = '等待初始化...';
+                return;
+            }
+            
+            try {
+                const state = await tetris.getGameState();
+                document.getElementById('stateContent').textContent = JSON.stringify(state, null, 2);
+                
+                // Handle CAPTCHA display
+                const captchaSection = document.getElementById('captchaSection');
+                if (state.captchaRequired) {
+                    captchaSection.classList.add('active');
+                    currentCaptchaId = state.captchaId;
+                    document.getElementById('captchaInput').value = '';
+                    document.getElementById('captchaError').textContent = '';
+                    document.getElementById('captchaImage').src = tetris.getCaptchaImageUrl(state.captchaId);
+                    log('需要人机验证！', 'warning');
+                } else {
+                    captchaSection.classList.remove('active');
+                }
+            } catch (error) {
+                log('获取状态失败: ' + error.message, 'error');
+            }
+        }
+
+        // Get detailed board state
+        async function getBoardState() {
+            if (!isSdkReady) return log('请先初始化 SDK', 'error');
+            
+            try {
+                const state = await tetris.getBoardState();
+                log('获取到棋盘状态', 'success');
+                document.getElementById('stateContent').textContent = JSON.stringify(state, null, 2);
+            } catch (error) {
+                log('获取棋盘状态失败: ' + error.message, 'error');
+            }
+        }
+
+        // CAPTCHA functions
+        function refreshCaptcha() {
+            if (!currentCaptchaId) return;
+            document.getElementById('captchaImage').src = tetris.getCaptchaImageUrl(currentCaptchaId) + '&t=' + Date.now();
+        }
+
+        async function submitCaptcha() {
+            const code = document.getElementById('captchaInput').value.trim();
+            if (!code || code.length !== 4) {
+                document.getElementById('captchaError').textContent = '请输入4位验证码';
+                return;
+            }
+            
+            try {
+                const result = await tetris.submitCaptcha(currentCaptchaId, code);
+                if (result.success) {
+                    document.getElementById('captchaSection').classList.remove('active');
+                    log('验证码验证成功！', 'success');
+                    refreshState();
+                } else {
+                    document.getElementById('captchaError').textContent = '验证码错误，请重试';
+                    log('验证码验证失败', 'error');
+                }
+            } catch (error) {
+                document.getElementById('captchaError').textContent = error.message;
+                log('验证码验证失败: ' + error.message, 'error');
+            }
+        }
+
+        // Set up event listeners
+        function setupEventListeners() {
+            // Game over event
+            tetris.on('gameOver', (data) => {
+                log(`🎮 游戏结束！得分: ${data.score}, 排名: #${data.rank}`, 'success');
+                refreshState();
+            });
+
+            // Score update event
+            tetris.on('scoreUpdate', (data) => {
+                log(`📊 分数: ${data.score}, 等级: ${data.level}, 消除: ${data.linesCleared}行`, 'info');
+            });
+
+            // CAPTCHA required event
+            tetris.on('captchaRequired', (data) => {
+                log('⚠️ 需要人机验证！', 'warning');
+                refreshState();
+            });
+
+            // CAPTCHA verified event
+            tetris.on('captchaVerified', (data) => {
+                log('✅ 验证码验证成功，游戏继续！', 'success');
+            });
+
+            // Game paused event
+            tetris.on('gamePaused', (data) => {
+                log('⏸️ 游戏已暂停', 'warning');
+            });
+
+            // Game resumed event
+            tetris.on('gameResumed', (data) => {
+                log('▶️ 游戏已继续', 'success');
+            });
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (!isSdkReady) return;
+            
+            switch (e.key.toLowerCase()) {
+                case 'q': moveLeft(); break;
+                case 'e': moveRight(); break;
+                case 's': moveDown(); break;
+                case 'w': rotate(); break;
+                case ' ': 
+                    e.preventDefault(); 
+                    hardDrop(); 
+                    break;
+                case 'enter': startGame(); break;
+                case 'escape': endGame(); break;
+                case 'p': pauseGame(); break;
+            }
+        });
+
+        // Auto-refresh state every 2 seconds
+        setInterval(() => {
+            if (isSdkReady) {
+                refreshState();
+            }
+        }, 2000);
+
+        // Auto-play demo mode
+        let autoPlayInterval = null;
+        
+        async function startAutoPlay() {
+            if (!isSdkReady) {
+                log('请先初始化 SDK', 'error');
+                return;
+            }
+            
+            if (autoPlayInterval) {
+                clearInterval(autoPlayInterval);
+                autoPlayInterval = null;
+                document.getElementById('startAutoPlayBtn').textContent = '自动演示';
+                log('自动演示已停止', 'info');
+                return;
+            }
+            
+            document.getElementById('startAutoPlayBtn').textContent = '停止演示';
+            log('开始自动演示...', 'info');
+            
+            autoPlayInterval = setInterval(async () => {
+                try {
+                    const state = await tetris.getGameState();
+                    
+                    if (state.status !== 'playing') {
+                        return; // Wait for game to start
+                    }
+                    
+                    if (state.captchaRequired) {
+                        return; // Skip during CAPTCHA
+                    }
+                    
+                    // Random movement for demo
+                    const actions = ['left', 'right', 'down', 'rotate'];
+                    const action = actions[Math.floor(Math.random() * actions.length)];
+                    
+                    switch (action) {
+                        case 'left': await tetris.moveLeft(); break;
+                        case 'right': await tetris.moveRight(); break;
+                        case 'down': await tetris.moveDown(); break;
+                        case 'rotate': await tetris.rotate(); break;
+                    }
+                } catch (e) {
+                    // Ignore errors in auto-play
+                }
+            }, 300);
+        }
+
+        // Initial setup
+        log('页面加载完成，请点击"初始化 SDK"按钮开始', 'info');
+    </script>
+</body>
+</html>
