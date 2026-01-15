@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tetris Game API Demo - LLM Playable</title>
+    <title>Tetris Game API Demo</title>
     <style>
         * {
             margin: 0;
@@ -66,8 +66,7 @@
 
         #gameFrame {
             width: 100%;
-            height: auto;
-            aspect-ratio: 1 / 1;
+            min-height: 400px;
             border: none;
             border-radius: 10px;
             box-shadow: 0 10px 40px rgba(0,0,0,0.5);
@@ -408,7 +407,7 @@
         <div class="main-content">
             <div class="game-section">
                 <div class="game-frame-container">
-                    <iframe id="gameFrame" src="game.html"></iframe>
+                    <iframe id="gameFrame" src="http://30.174.240.204:3000/game.html"></iframe>
                 </div>
 
                 <!-- CAPTCHA Section -->
@@ -478,7 +477,7 @@
         </div>
     </div>
 
-    <script src="tetris-sdk.js"></script>
+    <script src="http://30.174.240.204:3000/tetris-sdk.js"></script>
     <script>
         // Global variables
         let tetris = null;
@@ -488,6 +487,113 @@
         // Console logging
         function log(message, type = 'log') {
             console.log(`[${type}] ${message}`);
+        }
+
+        // 动态调整 iframe 高度
+        let lastIframeHeight = 0;
+        let isCrossDomain = false;
+        
+        function adjustIframeHeight(silent = false) {
+            const iframe = document.getElementById('gameFrame');
+            if (!iframe) return;
+
+            try {
+                // 尝试直接访问 iframe 内容（同域情况）
+                const iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
+                if (iframeDocument && iframeDocument.body) {
+                    const contentHeight = Math.max(
+                        iframeDocument.body.scrollHeight,
+                        iframeDocument.body.offsetHeight,
+                        iframeDocument.documentElement.scrollHeight,
+                        iframeDocument.documentElement.offsetHeight
+                    );
+                    
+                    if (contentHeight > 0 && contentHeight !== lastIframeHeight) {
+                        iframe.style.height = contentHeight + 'px';
+                        lastIframeHeight = contentHeight;
+                        if (!silent) {
+                            log(`iframe 高度已调整为: ${contentHeight}px`, 'info');
+                        }
+                    }
+                    isCrossDomain = false;
+                }
+            } catch (e) {
+                // 跨域情况下无法直接访问，依赖消息通信
+                if (!isCrossDomain) {
+                    console.log('检测到跨域 iframe，将通过 postMessage 通信获取高度');
+                    isCrossDomain = true;
+                    // 向 iframe 请求高度信息
+                    iframe.contentWindow.postMessage({ type: 'requestHeight' }, '*');
+                }
+            }
+        }
+
+        // 设置 iframe 高度监听
+        function setupIframeHeightListener() {
+            const iframe = document.getElementById('gameFrame');
+            if (!iframe) return;
+
+            // iframe 加载完成后调整高度
+            iframe.addEventListener('load', () => {
+                log('iframe 内容已加载', 'info');
+                adjustIframeHeight();
+
+                try {
+                    // 尝试在 iframe 内容上设置 ResizeObserver（同域情况）
+                    const iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
+                    if (iframeDocument && iframeDocument.body) {
+                        const resizeObserver = new ResizeObserver(() => {
+                            adjustIframeHeight();
+                        });
+                        resizeObserver.observe(iframeDocument.body);
+                        resizeObserver.observe(iframeDocument.documentElement);
+                        
+                        // 监听 DOM 变化
+                        const mutationObserver = new MutationObserver(() => {
+                            adjustIframeHeight();
+                        });
+                        mutationObserver.observe(iframeDocument.body, {
+                            childList: true,
+                            subtree: true,
+                            attributes: true,
+                            attributeFilter: ['style', 'class']
+                        });
+                        
+                        log('iframe 内容变化监听已设置', 'success');
+                    }
+                } catch (e) {
+                    // 跨域情况，通过消息通信处理
+                    console.log('跨域环境，等待 postMessage');
+                }
+            });
+
+            // 监听来自 iframe 的消息（跨域情况）
+            window.addEventListener('message', (event) => {
+                const iframe = document.getElementById('gameFrame');
+                if (!iframe) return;
+                
+                // 可以添加来源验证
+                if (event.data && event.data.type === 'iframeResize') {
+                    const height = event.data.height;
+                    if (height && height > 0 && height !== lastIframeHeight) {
+                        iframe.style.height = height + 'px';
+                        lastIframeHeight = height;
+                        log(`iframe 高度已调整为: ${height}px (通过消息)`, 'info');
+                    }
+                }
+            });
+
+            // 定期检查高度变化（备用方案，使用静默模式）
+            setInterval(() => {
+                adjustIframeHeight(true);
+            }, 1000);
+            
+            // 如果是跨域，定期请求高度
+            setInterval(() => {
+                if (isCrossDomain && iframe.contentWindow) {
+                    iframe.contentWindow.postMessage({ type: 'requestHeight' }, '*');
+                }
+            }, 500);
         }
 
         // Initialize SDK automatically
@@ -798,6 +904,9 @@
 
         // Auto-initialize SDK on page load
         window.addEventListener('load', () => {
+            // 先设置 iframe 高度监听
+            setupIframeHeightListener();
+            
             setTimeout(() => {
                 initSDK();
             }, 500);
