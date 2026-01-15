@@ -185,33 +185,25 @@ class TetrisGameSDK {
     // ==================== Game Control APIs ====================
     
     /**
-     * Get the current game state
-     * @returns {Promise<Object>} Game state containing:
+     * Get the current game state (includes board state and captcha)
+     * @returns {Promise<Object>} Complete game state containing:
      *   - status: 'playing' | 'finished' | 'waiting'
      *   - score: Current score
      *   - lines: Lines cleared
      *   - level: Current level
-     *   - board: 20x10 board array
-     *   - currentPiece: Current falling piece
+     *   - board: 20x10 board array (0=empty, 1=occupied)
+     *   - currentPiece: Current falling piece with position, shape, type
      *   - nextPiece: Next piece preview
      *   - captchaRequired: Whether CAPTCHA is needed
      *   - captchaId: CAPTCHA challenge ID (if required)
-     */
-    async getGameState() {
-        return this._postMessage({ type: '__SDK_GET_STATE__' });
-    }
-    
-    /**
-     * Get detailed board state with block information
-     * @returns {Promise<Object>} Detailed board state containing:
-     *   - board: 20x10 array with cell details (null or block object)
-     *   - boardWidth: 10
-     *   - boardHeight: 20
-     *   - currentPiece: Falling piece with position, shape, type
-     *   - nextPiece: Next piece preview
-     *   - score: Current score
-     *   - level: Current level
-     *   - lines: Lines cleared
+     *   - captchaDataUri: CAPTCHA image as data URI (if required)
+     * 
+     * Board format: board[y][x] uses simplified format where 0=empty, 1=occupied
+     * This provides all information needed including the complete board state.
+     * 
+     * CAPTCHA handling: When captchaRequired is true, captchaDataUri contains the
+     * verification image as a data URI (data:image/svg+xml;base64,...) that can be
+     * directly used in <img> src or processed by AI vision models.
      * 
      * currentPiece shape matrix (rotation state):
      *   The shape is a 2D array where 0=empty, 1=filled.
@@ -228,10 +220,10 @@ class TetrisGameSDK {
      *                         [1],
      *                         [1]]
      * 
-     *   To determine orientation: check matrix dimensions (rows x cols)
+     *   To determine piece orientation: check shape matrix dimensions (rows x cols)
      */
-    async getBoardState() {
-        return this._postMessage({ type: '__SDK_GET_BOARD__' });
+    async getGameState() {
+        return this._postMessage({ type: '__SDK_GET_STATE__' });
     }
     
     /**

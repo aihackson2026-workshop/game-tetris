@@ -23,18 +23,143 @@
 
         .game-container {
             display: none;
-            gap: 30px;
+            flex-direction: column;
+            gap: 20px;
+            max-width: 1200px;
+            width: 100%;
         }
 
         .game-container.active {
             display: flex;
         }
 
+        /* 顶部信息区 */
+        .top-info-container {
+            display: flex;
+            gap: 20px;
+            width: 100%;
+        }
+
+        .player-info-panel {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .leaderboard-panel {
+            width: 350px;
+            flex-shrink: 0;
+        }
+
+        /* 玩家信息网格布局 */
+        .player-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+            padding: 0;
+        }
+
+        .stat-item-grid {
+            background: #f5f5f5;
+            padding: 12px 16px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .stat-item-grid .stat-label {
+            color: #666;
+            font-size: 0.85em;
+            font-weight: 500;
+        }
+
+        .stat-item-grid .stat-value {
+            color: #333;
+            font-weight: bold;
+            font-size: 1.3em;
+        }
+
+        /* 游戏进展卡片 */
+        .game-progress {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .progress-item {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 6px;
+            text-align: center;
+        }
+
+        .progress-item .stat-label {
+            color: #666;
+            font-size: 0.8em;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .progress-item .stat-value {
+            color: #667eea;
+            font-weight: bold;
+            font-size: 1.1em;
+            display: block;
+        }
+
+        /* 连接状态指示器 */
+        .connection-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            float: right;
+            font-size: 0.85em;
+            color: #666;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ccc;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.connected {
+            background: #4caf50;
+            box-shadow: 0 0 8px rgba(76, 175, 80, 0.5);
+        }
+
+        .status-dot.disconnected {
+            background: #f44336;
+            animation: none;
+        }
+
+        .status-dot.connecting {
+            background: #ff9800;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* 底部游戏区 */
+        .bottom-game-container {
+            display: flex;
+            gap: 20px;
+        }
+
         .game-board {
+            flex: 1;
+            min-width: 0;
             background: white;
             border-radius: 12px;
             padding: 20px;
             box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
 
         #gameCanvas {
@@ -42,9 +167,13 @@
             border-radius: 8px;
             background: #000;
             display: block;
+            max-width: 100%;
+            height: auto;
         }
 
         .side-panel {
+            width: 350px;
+            flex-shrink: 0;
             display: flex;
             flex-direction: column;
             gap: 20px;
@@ -222,6 +351,22 @@
             background: #45a049;
         }
 
+        .btn-logout {
+            float: right;
+            padding: 6px 12px;
+            background: #f44336;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.85em;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .btn-logout:hover {
+            background: #d32f2f;
+        }
+
         .game-over-overlay {
             display: none;
             position: fixed;
@@ -376,63 +521,86 @@
 
     <!-- 游戏界面 -->
     <div class="game-container" id="gameContainer">
-        <div class="game-board">
-            <canvas id="gameCanvas" width="300" height="600"></canvas>
-            <button class="btn btn-start" id="startBtn" onclick="startGame()">开始游戏</button>
-        </div>
-
-        <div class="side-panel">
-            <div class="info-panel">
-                <h3>游戏信息</h3>
-                <div class="stat-item">
-                    <span class="stat-label">玩家</span>
-                    <span class="stat-value" id="playerNickname">-</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">当前分数</span>
-                    <span class="stat-value" id="currentScore">0</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">历史最高分</span>
-                    <span class="stat-value" id="highestScore">0</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">全局排名</span>
-                    <span class="stat-value" id="globalRank">-</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">消除行数</span>
-                    <span class="stat-value" id="linesCleared">0</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">等级</span>
-                    <span class="stat-value" id="currentLevel">1</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">游戏时长</span>
-                    <span class="stat-value" id="gameDuration">00:00</span>
+        <!-- 顶部信息区：玩家信息和排行榜左右排列 -->
+        <div class="top-info-container">
+            <div class="info-panel player-info-panel">
+                <h3>
+                    🎮 玩家信息
+                    <button class="btn-logout" onclick="logout()" title="退出登录">🚪 退出</button>
+                </h3>
+                <div class="player-stats-grid">
+                    <div class="stat-item-grid">
+                        <span class="stat-label">玩家</span>
+                        <span class="stat-value" id="playerNickname">-</span>
+                    </div>
+                    <div class="stat-item-grid">
+                        <span class="stat-label">历史最高分</span>
+                        <span class="stat-value" id="highestScore">0</span>
+                    </div>
+                    <div class="stat-item-grid">
+                        <span class="stat-label">全局排名</span>
+                        <span class="stat-value" id="globalRank">-</span>
+                    </div>
                 </div>
             </div>
 
-            <div class="info-panel">
-                <h3>下一个方块</h3>
-                <canvas class="next-piece-canvas" id="nextPieceCanvas" width="120" height="120"></canvas>
-            </div>
-
-            <div class="info-panel">
-                <h3>排行榜 TOP 10</h3>
+            <div class="info-panel leaderboard-panel">
+                <h3>
+                    🏆 排行榜 TOP 10
+                    <span class="connection-status">
+                        <span class="status-dot" id="connectionDot"></span>
+                        <span id="connectionText">连接中...</span>
+                    </span>
+                </h3>
                 <div class="leaderboard-mini" id="leaderboardMini">
                     <div style="text-align: center; color: #999; padding: 20px;">暂无数据</div>
                 </div>
             </div>
+        </div>
 
-            <div class="info-panel">
-                <div class="controls">
-                    <h4>操作说明</h4>
-                    <p>← → : 左右移动</p>
-                    <p>↓ : 快速下落</p>
-                    <p>↑ : 旋转方块</p>
-                    <p>空格 : 直接落下</p>
+        <!-- 底部游戏区 -->
+        <div class="bottom-game-container">
+            <div class="game-board">
+                <canvas id="gameCanvas" width="300" height="600"></canvas>
+                <button class="btn btn-start" id="startBtn" onclick="startGame()">开始游戏</button>
+            </div>
+
+            <div class="side-panel">
+                <div class="info-panel">
+                    <h3>🎯 游戏进展</h3>
+                    <div class="game-progress">
+                        <div class="progress-item">
+                            <span class="stat-label">当前分数</span>
+                            <span class="stat-value" id="currentScore">0</span>
+                        </div>
+                        <div class="progress-item">
+                            <span class="stat-label">消除行数</span>
+                            <span class="stat-value" id="linesCleared">0</span>
+                        </div>
+                        <div class="progress-item">
+                            <span class="stat-label">等级</span>
+                            <span class="stat-value" id="currentLevel">1</span>
+                        </div>
+                        <div class="progress-item">
+                            <span class="stat-label">游戏时长</span>
+                            <span class="stat-value" id="gameDuration">00:00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="info-panel">
+                    <h3>📦 下一个方块</h3>
+                    <canvas class="next-piece-canvas" id="nextPieceCanvas" width="120" height="120"></canvas>
+                </div>
+
+                <div class="info-panel">
+                    <div class="controls">
+                        <h4>⌨️ 操作说明</h4>
+                        <p>← → : 左右移动</p>
+                        <p>↓ : 快速下落</p>
+                        <p>↑ : 旋转方块</p>
+                        <p>空格 : 直接落下</p>
+                    </div>
                 </div>
             </div>
         </div>

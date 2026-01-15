@@ -245,14 +245,16 @@ const result = await tetris.moveLeft();
 **Response:**
 ```javascript
 {
-    success: true,
-    x: 2  // New X position
+    success: true,   // Always true (API call succeeded)
+    x: 2             // Current X position after attempted move
 }
 ```
 
 **Notes:**
-- Returns `success: false` if the piece cannot move left (collision or boundary)
-- The piece stays in its original position if movement fails
+- API call always returns `success: true` (the command was executed)
+- If the piece cannot move left (collision or boundary), it stays in its original position
+- To verify if movement occurred, compare the X position before and after the call
+- The returned `x` value is the piece's current position (may be unchanged if blocked)
 
 ### Move Right
 
@@ -263,10 +265,16 @@ const result = await tetris.moveRight();
 **Response:**
 ```javascript
 {
-    success: true,
-    x: 4  // New X position
+    success: true,   // Always true (API call succeeded)
+    x: 4             // Current X position after attempted move
 }
 ```
+
+**Notes:**
+- API call always returns `success: true` (the command was executed)
+- If the piece cannot move right (collision or boundary), it stays in its original position
+- To verify if movement occurred, compare the X position before and after the call
+- The returned `x` value is the piece's current position (may be unchanged if blocked)
 
 ### Move Down (Soft Drop)
 
@@ -277,15 +285,20 @@ const result = await tetris.moveDown();
 **Response:**
 ```javascript
 {
-    success: true,
-    y: 1  // New Y position
+    success: true,   // true = piece moved down, false = piece locked in place
+    y: 1             // Current Y position
 }
 ```
 
 **Notes:**
 - Moves the piece down by one row
-- Returns `success: false` if the piece cannot move down (locked in place)
-- When `success: false`, call `tetris.getGameState()` to check if the piece was locked
+- **`success: true`**: Piece successfully moved down to a new row
+- **`success: false`**: Piece hit the bottom or another piece and has been **locked in place**
+  - When locked, a new piece spawns automatically (from `currentPiece`)
+  - The previous `nextPiece` becomes the new `currentPiece`
+  - A new `nextPiece` is generated
+- After receiving `success: false`, call `tetris.getGameState()` to get the new piece information
+- The returned `y` value is the piece's final position before locking
 
 ### Hard Drop
 
@@ -298,14 +311,18 @@ const result = await tetris.hardDrop();
 **Response:**
 ```javascript
 {
-    success: true
+    success: true    // Always true (API call succeeded)
 }
 ```
 
 **Notes:**
-- The piece falls to the lowest possible position
-- The piece is then locked in place
-- Call `tetris.getGameState()` to check the new state
+- The piece instantly falls to the lowest possible position
+- The piece is immediately locked in place
+- A new piece spawns automatically after locking
+- Always call `tetris.getGameState()` or `tetris.getBoardState()` after hard drop to get:
+  - The new current piece
+  - Updated board state
+  - New score (if lines were cleared)
 
 ### Rotate
 
@@ -318,13 +335,80 @@ const result = await tetris.rotate();
 **Response:**
 ```javascript
 {
-    success: true
+    success: true    // Always true (API call succeeded, but rotation may be blocked)
 }
 ```
 
+**Important:** The API always returns `success: true` even if rotation was blocked by collision. To verify if rotation actually occurred, compare the piece's `shape` matrix before and after:
+
+```javascript
+const before = await tetris.getBoardState();
+const oldShape = JSON.stringify(before.currentPiece.shape);
+
+await tetris.rotate();
+
+const after = await tetris.getBoardState();
+const newShape = JSON.stringify(after.currentPiece.shape);
+
+if (oldShape === newShape) {
+    console.log('Rotation blocked by collision');
+} else {
+    console.log('Rotation successful');
+}
+```
+
+**Rotation Behavior:**
+
+1. **Shape Matrix Transformation:**
+   - The piece's `shape` matrix is rotated 90° clockwise
+   - Algorithm: Transpose the matrix, then reverse each row
+   - Example:
+   ```javascript
+   // Before rotation (T-piece, 0°):
+   [[0,1,0],
+    [1,1,1]]
+   
+   // After rotation (T-piece, 90°):
+   [[1,0],
+    [1,1],
+    [1,0]]
+   ```
+
+2. **Coordinate Behavior:**
+   - **The (x, y) position remains unchanged**
+   - The piece rotates around its top-left corner (origin point)
+   - Only the `shape` matrix changes, not the position
+   
+3. **Collision Handling:**
+   - If rotation causes collision with walls, floor, or other pieces:
+     - The rotation is **rejected**
+     - The piece reverts to its original orientation
+     - **No wall kick or position adjustment is performed**
+   - If rotation is rejected:
+     - `success: true` is still returned (API call succeeded)
+     - But the piece orientation remains unchanged
+     - Call `getBoardState()` to verify if rotation occurred
+
+**Example - Rotation Near Wall:**
+```javascript
+// Piece at x=9, y=5 with horizontal I-piece (4×1)
+// Current: [[1,1,1,1]]
+const before = await tetris.getBoardState();
+console.log(before.currentPiece.shape); // [[1,1,1,1]]
+
+await tetris.rotate();
+
+const after = await tetris.getBoardState();
+// Rotation rejected - would extend beyond right wall
+console.log(after.currentPiece.shape); // Still [[1,1,1,1]]
+console.log(after.currentPiece.x);     // Still 9
+console.log(after.currentPiece.y);     // Still 5
+```
+
 **Notes:**
-- If rotation would cause collision, the piece stays unchanged
-- Use after getting the state to verify rotation occurred
+- Always call `getBoardState()` after rotation to verify the new orientation
+- The piece's bounding box size changes with rotation (e.g., 4×1 becomes 1×4)
+- No automatic position adjustment - rotation fails if new shape doesn't fit
 
 ---
 
@@ -649,17 +733,80 @@ A piece at {x: 3, y: 5} means:
 
 ## Piece Rotation
 
-Pieces rotate 90 degrees clockwise around their top-left corner.
+### Rotation Mechanics
 
-Example rotation:
+Pieces rotate **90 degrees clockwise** around their **top-left corner** (origin point).
+
+**Transformation Algorithm:**
+1. Transpose the shape matrix (swap rows and columns)
+2. Reverse each row
+3. Keep the (x, y) position unchanged
+
+**Example - T Piece Rotation:**
 ```
-Before:              After rotate():
-[[0,1,0],            [[0,0,1],
- [1,1,1],     →       [1,1,1],
- [0,0,0]]             [0,0,1]]
+Rotation 0° → 90°:
 
-The piece's (x, y) stays the same after rotation.
-If rotation causes collision, the piece stays unchanged.
+Before:              After:
+[[0,1,0],            [[1,0],
+ [1,1,1]]     →       [1,1],
+                      [1,0]]
+
+Position: (x=3, y=5) → (x=3, y=5)  // Unchanged!
+```
+
+**Example - I Piece Rotation:**
+```
+Rotation 0° → 90°:
+
+Before:              After:
+[[1,1,1,1]]   →      [[1],
+                      [1],
+                      [1],
+                      [1]]
+
+Position: (x=3, y=0) → (x=3, y=0)  // Unchanged!
+Shape changes from 4×1 to 1×4
+```
+
+### Important Notes
+
+1. **No Wall Kick:** 
+   - If rotation causes collision (wall, floor, or blocks), the rotation is **rejected**
+   - The piece stays in its original orientation
+   - No position adjustment is attempted
+
+2. **Coordinate Stability:**
+   - The (x, y) coordinates **never change** during rotation
+   - Only the shape matrix changes
+   - The piece rotates around its fixed top-left corner
+
+3. **Bounding Box Changes:**
+   - Different rotations have different bounding boxes
+   - Example: I-piece alternates between 4×1 (horizontal) and 1×4 (vertical)
+   - A 3×2 piece becomes 2×3 after rotation
+
+4. **Collision Detection:**
+   - After matrix transformation, check if all filled cells fit within bounds
+   - If any cell would be out of bounds or overlap existing blocks:
+     - Rotation fails silently
+     - API returns `{success: true}` (the call succeeded)
+     - But the piece orientation remains unchanged
+
+**Verification Pattern:**
+```javascript
+const before = await tetris.getBoardState();
+const oldShape = JSON.stringify(before.currentPiece.shape);
+
+await tetris.rotate();
+
+const after = await tetris.getBoardState();
+const newShape = JSON.stringify(after.currentPiece.shape);
+
+if (oldShape === newShape) {
+    console.log('Rotation was blocked by collision');
+} else {
+    console.log('Rotation successful');
+}
 ```
 
 ---

@@ -6,7 +6,7 @@ const CAPTCHA_CONFIG = {
   height: 50,
   fontSize: 30,
   expirationTime: 120000, // 2分钟过期
-  challengeProbability: 0.05 // 每次请求有5%概率触发验证码
+  challengeProbability: 0.005 // 每次请求有5%概率触发验证码
 };
 
 // 存储验证码
@@ -31,7 +31,7 @@ function randomColor(min = 50, max = 200) {
   return `rgb(${r},${g},${b})`;
 }
 
-// 生成验证码图片（返回 base64）
+// 生成验证码图片（返回 Buffer）
 function generateCaptchaImage(code) {
   const canvas = Buffer.alloc ? Buffer.alloc(200) : Buffer.from([]);
   // 使用简单的SVG代替Canvas，避免依赖问题
@@ -55,6 +55,13 @@ function generateCaptchaImage(code) {
     </svg>
   `;
   return Buffer.from(svg);
+}
+
+// 生成验证码图片的 Data URI
+function generateCaptchaDataUri(code) {
+  const svgBuffer = generateCaptchaImage(code);
+  const base64 = svgBuffer.toString('base64');
+  return `data:image/svg+xml;base64,${base64}`;
 }
 
 // 生成验证码
@@ -133,5 +140,7 @@ module.exports = {
   verifyCaptcha,
   shouldTriggerCaptcha,
   generateCaptchaImage,
+  generateCaptchaDataUri,
+  captchaStore, // 导出验证码存储，供图片API使用
   CAPTCHA_CONFIG
 };

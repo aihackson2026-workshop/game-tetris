@@ -28,6 +28,9 @@ class GameManager {
     
     // 启动游戏时长广播（每1秒广播一次）
     this.startDurationBroadcast();
+    
+    // 启动断连检测（每10秒检测一次）
+    this.startDisconnectDetection();
   }
 
   // 启动游戏时长广播
@@ -44,6 +47,68 @@ class GameManager {
       clearInterval(this.durationBroadcastInterval);
       this.durationBroadcastInterval = null;
       console.log('游戏时长广播已停止');
+    }
+  }
+
+  // 启动断连检测
+  startDisconnectDetection() {
+    // 每10秒检测一次是否有玩家超时未响应
+    this.disconnectDetectionInterval = setInterval(() => {
+      this.checkPlayerTimeouts();
+    }, 10000);
+    console.log('断连检测已启动（间隔: 10秒，超时阈值: 30秒）');
+  }
+
+  // 停止断连检测
+  stopDisconnectDetection() {
+    if (this.disconnectDetectionInterval) {
+      clearInterval(this.disconnectDetectionInterval);
+      this.disconnectDetectionInterval = null;
+      console.log('断连检测已停止');
+    }
+  }
+
+  // 检查玩家超时
+  checkPlayerTimeouts() {
+    const now = Date.now();
+    const TIMEOUT_THRESHOLD = 30000; // 30秒无响应视为断连
+    
+    for (const [playerId, player] of this.players) {
+      // 只检查正在游戏中的玩家
+      if (player.status === 'playing') {
+        // 检查最后活跃时间
+        const lastActive = player.lastActiveTime || player.startTime;
+        if (lastActive && (now - lastActive) > TIMEOUT_THRESHOLD) {
+          console.warn(`检测到玩家 ${player.nickname} (${playerId}) 超时未响应，自动结束游戏`);
+          console.warn(`  最后活跃时间: ${new Date(lastActive).toLocaleString()}`);
+          console.warn(`  超时时长: ${((now - lastActive) / 1000).toFixed(0)}秒`);
+          
+          try {
+            // 自动结束游戏
+            this.endGame(playerId);
+            
+            // 如果有WebSocket连接，尝试通知客户端
+            const ws = this.wsConnections.get(playerId);
+            if (ws && ws.readyState === 1) {
+              ws.send(JSON.stringify({
+                type: 'gameEnded',
+                reason: 'timeout',
+                message: '由于长时间未响应，游戏已自动结束'
+              }));
+            }
+          } catch (error) {
+            console.error(`自动结束游戏失败 (${playerId}):`, error.message);
+          }
+        }
+      }
+    }
+  }
+
+  // 更新玩家活跃时间
+  updatePlayerActivity(playerId) {
+    const player = this.players.get(playerId);
+    if (player) {
+      player.lastActiveTime = Date.now();
     }
   }
 
@@ -153,6 +218,8 @@ class GameManager {
       this.autoSaveInterval = null;
       console.log('自动保存已停止');
     }
+    // 同时停止断连检测
+    this.stopDisconnectDetection();
   }
 
   // 创建数据备份
@@ -400,6 +467,9 @@ class GameManager {
     if (player.status !== 'playing') {
       throw new Error('游戏未开始');
     }
+    
+    // 更新活跃时间
+    this.updatePlayerActivity(playerId);
 
     // 如果游戏已暂停，跳过下落时间验证
     if (player.isPaused) {
@@ -575,6 +645,9 @@ class GameManager {
     if (!player) {
       throw new Error('玩家不存在');
     }
+    
+    // 更新活跃时间
+    this.updatePlayerActivity(playerId);
 
     const oldBoard = player.lastBoardState;
     const oldScore = player.currentScore || 0;

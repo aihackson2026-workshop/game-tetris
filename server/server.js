@@ -105,6 +105,13 @@ app.post('/api/game/next-piece', (req, res) => {
     }
 
     const result = gameManager.getNextPiece(playerId);
+    
+    // 检查是否需要触发验证码（基于速度违规）
+    if (gameManager.shouldTriggerCaptcha(playerId)) {
+      console.log(`触发验证码挑战: 玩家 ${playerId}`);
+      gameManager.pauseForCaptcha(playerId);
+    }
+    
     res.json({
       success: true,
       currentPiece: result.currentPiece,
@@ -126,6 +133,15 @@ app.post('/api/game/update', (req, res) => {
     }
 
     const player = gameManager.updateGameState(playerId, gameState, validatePiece);
+    
+    // 检查是否需要触发验证码（在消除行后）
+    if (gameState.lines && gameState.lines > 0) {
+      if (gameManager.shouldTriggerCaptcha(playerId)) {
+        console.log(`触发验证码挑战: 玩家 ${playerId}, 分数 ${player.currentScore}`);
+        gameManager.pauseForCaptcha(playerId);
+      }
+    }
+    
     res.json({
       success: true,
       currentScore: player.currentScore,
@@ -310,11 +326,16 @@ app.post('/api/captcha/create', (req, res) => {
 
 // 验证验证码
 app.post('/api/captcha/verify', (req, res) => {
-  const { captchaId, inputCode } = req.body;
-  const captchaModule = require('./captcha');
-  const result = captchaModule.verifyCaptcha(captchaId, inputCode);
+  const { captchaId, inputCode, playerId } = req.body;
   
-  if (result.valid) {
+  if (!playerId) {
+    return res.status(400).json({ success: false, error: '缺少玩家ID' });
+  }
+  
+  // 使用 gameManager 的验证方法，会自动恢复游戏
+  const result = gameManager.verifyCaptchaAndResume(playerId, captchaId, inputCode);
+  
+  if (result.success) {
     res.json({ success: true });
   } else {
     res.status(400).json({ success: false, error: result.error });
@@ -363,7 +384,12 @@ wss.on('connection', (ws, req) => {
       const data = JSON.parse(message);
       
       // 处理不同类型的消息
-      if (data.type === 'gameUpdate' && playerId) {
+      if (data.type === 'ping' && playerId) {
+        // 心跳消息 - 更新活跃时间并响应pong
+        gameManager.updatePlayerActivity(playerId);
+        ws.send(JSON.stringify({ type: 'pong' }));
+        
+      } else if (data.type === 'gameUpdate' && playerId) {
         // 玩家游戏状态更新
         gameManager.updateGameState(playerId, data.gameState);
         
@@ -409,6 +435,17 @@ wss.on('connection', (ws, req) => {
     if (type === 'admin') {
       gameManager.removeAdminConnection(ws);
     } else if (type === 'player' && playerId) {
+      // 检查玩家是否正在游戏中
+      const playerInfo = gameManager.getPlayerInfo(playerId);
+      if (playerInfo && playerInfo.status === 'playing') {
+        console.log(`玩家 ${playerInfo.nickname} (${playerId}) 断开连接时正在游戏中，自动结束游戏`);
+        try {
+          gameManager.endGame(playerId);
+        } catch (error) {
+          console.error(`自动结束游戏失败:`, error.message);
+        }
+      }
+      
       gameManager.removePlayerConnection(playerId);
     }
   });

@@ -45,6 +45,8 @@ let gameLoop = null;
 let dropInterval = 1000;
 let lastDropTime = 0;
 let isGamePaused = false;
+let isLoggedOut = false; // 标记是否已退出登录
+let heartbeatInterval = null; // 心跳定时器
 
 // 服务端方块序列管理
 let serverPieceSequence = []; // 服务端分配的方块序列
@@ -86,8 +88,139 @@ window.addEventListener('load', () => {
         playerId = urlPlayerId;
         playerNickname = urlNickname;
         showGameContainer();
+    } else {
+        // 检查localStorage中是否有保存的登录信息
+        tryAutoLogin();
     }
 });
+
+// 尝试自动登录
+function tryAutoLogin() {
+    const savedLoginInfo = localStorage.getItem('tetris_login_info');
+    if (!savedLoginInfo) {
+        return;
+    }
+    
+    let loginInfo;
+    try {
+        loginInfo = JSON.parse(savedLoginInfo);
+    } catch (error) {
+        console.error('解析登录信息失败:', error);
+        // 只有在 JSON 解析失败时才清除
+        localStorage.removeItem('tetris_login_info');
+        return;
+    }
+    
+    // 验证登录信息的完整性
+    if (!loginInfo.playerId || !loginInfo.nickname) {
+        console.error('登录信息不完整');
+        localStorage.removeItem('tetris_login_info');
+        return;
+    }
+    
+    // 恢复登录状态
+    playerId = loginInfo.playerId;
+    playerNickname = loginInfo.nickname;
+    
+    try {
+        // 隐藏注册界面，显示游戏界面
+        document.getElementById('registerContainer').classList.add('hidden');
+        // 从服务端加载最新的玩家数据
+        loadPlayerDataAndShowGame();
+        console.log('自动登录成功:', playerNickname);
+    } catch (error) {
+        // showGameContainer 中的错误不应该清除登录信息
+        // 这些错误通常是临时的（如 WebSocket 连接失败）
+        console.error('显示游戏界面时出错:', error);
+        // 不清除 localStorage，下次刷新可以重试
+    }
+}
+
+// 从服务端加载玩家数据并显示游戏界面
+async function loadPlayerDataAndShowGame() {
+    try {
+        const response = await fetch(`/api/player/${playerId}`);
+        if (response.ok) {
+            const playerData = await response.json();
+            highestScore = playerData.highestScore || 0;
+            // 更新显示
+            const highestScoreEl = document.getElementById('highestScore');
+            if (highestScoreEl) {
+                highestScoreEl.textContent = highestScore;
+            }
+        } else {
+            console.warn('无法加载玩家数据，使用默认值');
+            highestScore = 0;
+        }
+    } catch (error) {
+        console.error('加载玩家数据失败:', error);
+        highestScore = 0;
+    }
+    
+    showGameContainer();
+}
+
+// 保存用户身份信息到localStorage（仅保存身份，不保存业务数据）
+function saveUserIdentity() {
+    if (playerId && playerNickname) {
+        const loginInfo = {
+            playerId: playerId,
+            nickname: playerNickname
+        };
+        localStorage.setItem('tetris_login_info', JSON.stringify(loginInfo));
+    }
+}
+
+// 退出登录
+function logout() {
+    // 设置退出标志，防止自动重连
+    isLoggedOut = true;
+    
+    // 清除localStorage中的登录信息
+    localStorage.removeItem('tetris_login_info');
+    
+    // 断开WebSocket连接
+    if (ws) {
+        ws.close();
+        ws = null;
+    }
+    
+    // 停止游戏
+    if (gameLoop) {
+        cancelAnimationFrame(gameLoop);
+        gameLoop = null;
+    }
+    
+    // 重置游戏状态
+    playerId = null;
+    playerNickname = null;
+    highestScore = 0;
+    gameState.playing = false;
+    gameState.gameOver = false;
+    
+    // 隐藏游戏界面，显示注册界面
+    document.getElementById('gameContainer').classList.remove('active');
+    document.getElementById('registerContainer').classList.remove('hidden');
+    
+    // 清空输入框和错误信息
+    const nicknameInput = document.getElementById('nicknameInput');
+    const emailInput = document.getElementById('emailInput');
+    const nicknameError = document.getElementById('nicknameError');
+    const emailError = document.getElementById('emailError');
+    
+    if (nicknameInput) nicknameInput.value = '';
+    if (emailInput) emailInput.value = '';
+    if (nicknameError) {
+        nicknameError.textContent = '';
+        nicknameError.classList.remove('active');
+    }
+    if (emailError) {
+        emailError.textContent = '';
+        emailError.classList.remove('active');
+    }
+    
+    console.log('已退出登录');
+}
 
 // 注册玩家
 async function register() {
@@ -147,6 +280,9 @@ async function register() {
         playerNickname = data.player.nickname;
         highestScore = data.player.highestScore || 0;
 
+        // 保存用户身份信息到localStorage（仅身份信息）
+        saveUserIdentity();
+
         // 显示欢迎信息
         if (data.isNewPlayer) {
             console.log('欢迎新玩家！昵称和邮箱已绑定。');
@@ -174,27 +310,58 @@ async function register() {
 
 // 显示游戏容器
 function showGameContainer() {
-    document.getElementById('gameContainer').classList.add('active');
-    document.getElementById('playerNickname').textContent = playerNickname;
-    document.getElementById('highestScore').textContent = highestScore;
+    // 重置退出标志
+    isLoggedOut = false;
     
-    // 连接WebSocket
-    connectWebSocket();
+    try {
+        const gameContainer = document.getElementById('gameContainer');
+        const playerNicknameEl = document.getElementById('playerNickname');
+        const highestScoreEl = document.getElementById('highestScore');
+        
+        if (gameContainer) gameContainer.classList.add('active');
+        if (playerNicknameEl) playerNicknameEl.textContent = playerNickname;
+        if (highestScoreEl) highestScoreEl.textContent = highestScore;
+    } catch (error) {
+        console.error('更新游戏界面元素失败:', error);
+    }
+    
+    // 连接WebSocket（即使上面出错也要尝试连接）
+    try {
+        connectWebSocket();
+    } catch (error) {
+        console.error('连接WebSocket失败:', error);
+    }
     
     // 初始化游戏板
-    initBoard();
-    drawBoard();
+    try {
+        initBoard();
+        drawBoard();
+    } catch (error) {
+        console.error('初始化游戏板失败:', error);
+    }
 }
 
 // 连接WebSocket
 function connectWebSocket() {
+    // 如果已退出登录，不要重连
+    if (isLoggedOut || !playerId) {
+        return;
+    }
+    
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}?type=player&playerId=${playerId}`;
+    
+    // 更新连接状态为连接中
+    updateConnectionStatus('connecting');
     
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
         console.log('WebSocket已连接');
+        updateConnectionStatus('connected');
+        
+        // 启动心跳（每10秒发送一次ping）
+        startHeartbeat();
     };
 
     ws.onmessage = (event) => {
@@ -204,8 +371,51 @@ function connectWebSocket() {
 
     ws.onclose = () => {
         console.log('WebSocket连接断开');
-        setTimeout(connectWebSocket, 3000);
+        updateConnectionStatus('disconnected');
+        
+        // 停止心跳
+        stopHeartbeat();
+        
+        // 只有在未退出登录的情况下才尝试重连
+        if (!isLoggedOut && playerId) {
+            setTimeout(connectWebSocket, 3000);
+        }
     };
+
+    ws.onerror = (error) => {
+        console.error('WebSocket错误:', error);
+        updateConnectionStatus('disconnected');
+    };
+}
+
+// 更新连接状态显示
+function updateConnectionStatus(status) {
+    const dot = document.getElementById('connectionDot');
+    const text = document.getElementById('connectionText');
+    
+    // 安全检查：如果元素不存在（比如已退出登录），直接返回
+    if (!dot || !text) return;
+    
+    // 清除所有状态类
+    dot.className = 'status-dot';
+    
+    switch (status) {
+        case 'connected':
+            dot.classList.add('connected');
+            text.textContent = '已连接';
+            text.style.color = '#4caf50';
+            break;
+        case 'disconnected':
+            dot.classList.add('disconnected');
+            text.textContent = '已断开';
+            text.style.color = '#f44336';
+            break;
+        case 'connecting':
+            dot.classList.add('connecting');
+            text.textContent = '连接中...';
+            text.style.color = '#ff9800';
+            break;
+    }
 }
 
 // SDK事件发送函数
@@ -217,9 +427,43 @@ function emitSdkEvent(event, data) {
     }, '*');
 }
 
+// 启动心跳
+function startHeartbeat() {
+    // 清除旧的心跳定时器
+    stopHeartbeat();
+    
+    // 每10秒发送一次心跳
+    heartbeatInterval = setInterval(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'ping' }));
+        }
+    }, 10000);
+    
+    console.log('心跳已启动');
+}
+
+// 停止心跳
+function stopHeartbeat() {
+    if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+        heartbeatInterval = null;
+        console.log('心跳已停止');
+    }
+}
+
 // 处理WebSocket消息
 function handleWebSocketMessage(message) {
     switch (message.type) {
+        case 'pong':
+            // 心跳响应，不需要处理
+            break;
+        case 'gameEnded':
+            // 服务器通知游戏结束
+            if (message.reason === 'timeout') {
+                alert(message.message || '由于长时间未响应，游戏已自动结束');
+                endGame();
+            }
+            break;
         case 'init':
         case 'rankUpdate':
             if (message.rank !== undefined) {
@@ -235,12 +479,38 @@ function handleWebSocketMessage(message) {
             }
             break;
         case 'captchaChallenge':
-            showCaptchaModal(message.captchaId, message.imageUrl);
-            // 发送验证码事件
-            emitSdkEvent('captchaRequired', { 
-                captchaId: message.captchaId,
-                imageUrl: message.imageUrl
-            });
+            // 获取验证码图片并转换为 data URI
+            fetch(message.imageUrl)
+                .then(res => res.blob())
+                .then(blob => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        const dataUri = reader.result;
+                        captchaPending = { 
+                            id: message.captchaId, 
+                            dataUri: dataUri 
+                        };
+                        showCaptchaModal(message.captchaId, message.imageUrl);
+                        // 发送验证码事件
+                        emitSdkEvent('captchaRequired', { 
+                            captchaId: message.captchaId,
+                            imageUrl: message.imageUrl,
+                            dataUri: dataUri
+                        });
+                    };
+                    reader.readAsDataURL(blob);
+                })
+                .catch(err => {
+                    console.error('Failed to load captcha image:', err);
+                    captchaPending = { 
+                        id: message.captchaId 
+                    };
+                    showCaptchaModal(message.captchaId, message.imageUrl);
+                    emitSdkEvent('captchaRequired', { 
+                        captchaId: message.captchaId,
+                        imageUrl: message.imageUrl
+                    });
+                });
             break;
         case 'captchaVerified':
             if (message.success) {
@@ -306,7 +576,11 @@ async function verifyCaptcha() {
         const response = await fetch('/api/captcha/verify', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ captchaId, inputCode: code })
+            body: JSON.stringify({ 
+                captchaId, 
+                inputCode: code,
+                playerId: playerId // 添加玩家ID
+            })
         });
         
         const result = await response.json();
@@ -983,6 +1257,7 @@ function checkLines() {
 
 // 更新统计信息
 function updateStats() {
+    // 更新游戏进展卡片
     document.getElementById('currentScore').textContent = gameState.score;
     document.getElementById('linesCleared').textContent = gameState.lines;
     document.getElementById('currentLevel').textContent = gameState.level;
@@ -1032,6 +1307,7 @@ async function sendGameUpdate() {
         if (data.success && data.highestScore !== undefined) {
             highestScore = data.highestScore;
             document.getElementById('highestScore').textContent = highestScore;
+            // 最高分已保存到服务端，无需更新localStorage
         }
     } catch (error) {
         console.error('更新游戏状态失败:', error);
@@ -1115,11 +1391,6 @@ window.addEventListener('message', async (event) => {
             // 获取游戏状态
             case '__SDK_GET_STATE__':
                 result = handleGetState();
-                break;
-                
-            // 获取棋盘状态
-            case '__SDK_GET_BOARD__':
-                result = handleGetBoard();
                 break;
                 
             // 方块控制
@@ -1235,6 +1506,16 @@ function handleGetState() {
     const level = gameState.level || 1;
     const score = gameState.score || 0;
     
+    // 构建简化棋盘信息（0=空格，1=已占用）
+    const simplifiedBoard = [];
+    for (let y = 0; y < ROWS; y++) {
+        simplifiedBoard[y] = [];
+        for (let x = 0; x < COLS; x++) {
+            const cell = gameState.board[y][x];
+            simplifiedBoard[y][x] = cell === 0 ? 0 : 1;
+        }
+    }
+    
     return {
         status: gameState.playing ? 'playing' : (gameState.gameOver ? 'finished' : 'waiting'),
         score: score,
@@ -1242,63 +1523,12 @@ function handleGetState() {
         level: level,
         currentScore: score,
         highestScore: highestScore,
-        board: gameState.board,
+        board: simplifiedBoard,
         currentPiece: gameState.currentPiece,
         nextPiece: gameState.nextPiece,
         captchaRequired: captchaPending !== null,
-        captchaId: captchaPending?.id || null
-    };
-}
-
-// 处理获取棋盘状态
-function handleGetBoard() {
-    // 构建详细棋盘信息
-    const detailedBoard = [];
-    for (let y = 0; y < ROWS; y++) {
-        detailedBoard[y] = [];
-        for (let x = 0; x < COLS; x++) {
-            const cell = gameState.board[y][x];
-            if (cell === 0) {
-                detailedBoard[y][x] = null;
-            } else {
-                const typeNames = ['', 'I', 'O', 'T', 'S', 'Z', 'J', 'L'];
-                detailedBoard[y][x] = {
-                    type: typeNames[cell] || 'unknown',
-                    color: COLORS[typeNames[cell]] || '#fff',
-                    x: x,
-                    y: y
-                };
-            }
-        }
-    }
-    
-    // 当前下落方块详情
-    const currentPiece = gameState.currentPiece ? {
-        type: gameState.currentPiece.type,
-        color: gameState.currentPiece.color,
-        shape: gameState.currentPiece.shape,
-        x: gameState.currentPiece.x,
-        y: gameState.currentPiece.y,
-        id: gameState.currentPiece.id
-    } : null;
-    
-    // 下一个方块详情
-    const nextPiece = gameState.nextPiece ? {
-        type: gameState.nextPiece.type,
-        color: gameState.nextPiece.color,
-        shape: gameState.nextPiece.shape,
-        preview: true
-    } : null;
-    
-    return {
-        board: detailedBoard,
-        boardWidth: COLS,
-        boardHeight: ROWS,
-        currentPiece: currentPiece,
-        nextPiece: nextPiece,
-        score: gameState.score || 0,
-        level: gameState.level || 1,
-        lines: gameState.lines || 0
+        captchaId: captchaPending?.id || null,
+        captchaDataUri: captchaPending?.dataUri || null
     };
 }
 
@@ -1434,11 +1664,19 @@ async function handleCaptchaSubmit(captchaId, code) {
         throw new Error('No pending CAPTCHA challenge');
     }
     
+    if (!playerId) {
+        throw new Error('Player not logged in');
+    }
+    
     try {
         const response = await fetch('/api/captcha/verify', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ captchaId, inputCode: code })
+            body: JSON.stringify({ 
+                captchaId, 
+                inputCode: code,
+                playerId: playerId 
+            })
         });
         
         const result = await response.json();
@@ -1462,7 +1700,10 @@ async function handleCaptchaSubmit(captchaId, code) {
 // 修改 showCaptchaModal 以支持 SDK 触发
 const originalShowCaptchaModal = window.showCaptchaModal;
 window.showCaptchaModal = function(captchaId, imageUrl) {
-    captchaPending = { id: captchaId };
+    // captchaPending 已经在 captchaChallenge 中设置了
+    if (!captchaPending) {
+        captchaPending = { id: captchaId };
+    }
     if (originalShowCaptchaModal) {
         originalShowCaptchaModal(captchaId, imageUrl);
     } else {
