@@ -647,5 +647,68 @@
     </div>
 
     <script src="tetris-game.js"></script>
+    
+    <!-- iframe 高度自适应脚本 -->
+    <script>
+        (function() {
+            // 发送高度信息给父页面
+            function sendHeightToParent() {
+                if (window.parent === window) return; // 不在 iframe 中
+                
+                const height = Math.max(
+                    document.body.scrollHeight,
+                    document.body.offsetHeight,
+                    document.documentElement.scrollHeight,
+                    document.documentElement.offsetHeight,
+                    document.documentElement.clientHeight
+                );
+                
+                try {
+                    window.parent.postMessage({
+                        type: 'iframeResize',
+                        height: height
+                    }, '*');
+                } catch (e) {
+                    console.error('无法发送高度信息:', e);
+                }
+            }
+            
+            // 监听来自父页面的高度请求
+            window.addEventListener('message', function(event) {
+                if (event.data && event.data.type === 'requestHeight') {
+                    sendHeightToParent();
+                }
+            });
+            
+            // 使用 ResizeObserver 监听内容变化
+            if (typeof ResizeObserver !== 'undefined') {
+                const resizeObserver = new ResizeObserver(() => {
+                    sendHeightToParent();
+                });
+                resizeObserver.observe(document.body);
+                resizeObserver.observe(document.documentElement);
+            }
+            
+            // 使用 MutationObserver 监听 DOM 变化
+            const mutationObserver = new MutationObserver(() => {
+                sendHeightToParent();
+            });
+            mutationObserver.observe(document.body, {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                attributeFilter: ['style', 'class']
+            });
+            
+            // 初始发送
+            sendHeightToParent();
+            
+            // 页面加载完成后再次发送
+            window.addEventListener('load', sendHeightToParent);
+            
+            // 定期发送（备用方案）
+            setInterval(sendHeightToParent, 500);
+        })();
+    </script>
 </body>
 </html>
