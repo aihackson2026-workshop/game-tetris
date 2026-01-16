@@ -111,34 +111,7 @@ const state = await tetris.getGameState();
     level: 1,                   // Current level
     currentScore: 0,
     highestScore: 5000,         // Player's all-time best
-    board: [...],               // 20x10 array
-    currentPiece: {...},        // Current falling piece
-    nextPiece: {...},           // Next piece preview
-    captchaRequired: false,     // Whether CAPTCHA is needed
-    captchaId: null             // CAPTCHA challenge ID (if required)
-}
-```
-
-### Get Detailed Board State
-
-Returns detailed information about the board and pieces:
-
-```javascript
-const boardState = await tetris.getBoardState();
-```
-
-**Response:**
-```javascript
-{
-    board: [
-        // Row 0 (top)
-        [null, null, {type: 'I', color: '#00f0f0', x: 2, y: 0}, null, ...],
-        // Row 1
-        [...],
-        // ... 20 rows total
-    ],
-    boardWidth: 10,
-    boardHeight: 20,
+    board: [...],               // 20x10 array (simplified: 0=empty, 1=occupied)
     currentPiece: {
         type: 'T',              // Piece type: I, O, T, S, Z, J, L
         color: '#a000f0',       // Color code
@@ -153,17 +126,17 @@ const boardState = await tetris.getBoardState();
         shape: [[1,1],[1,1]],
         preview: true
     },
-    score: 0,
-    level: 1,
-    lines: 0
+    captchaRequired: false,     // Whether CAPTCHA is needed
+    captchaId: null,            // CAPTCHA challenge ID (if required)
+    captchaDataUri: null        // CAPTCHA image as data URI (if required)
 }
 ```
 
 **Understanding the Board:**
 
-Each cell in the board array is either:
-- `null`: Empty cell
-- `{type, color, x, y}`: Occupied cell with block details
+The board array is a simplified 20x10 matrix where:
+- `0`: Empty cell
+- `1`: Occupied cell (contains a locked block)
 
 **Understanding currentPiece.shape (Rotation State):**
 
@@ -178,7 +151,7 @@ shape: [[0,1,0],  // .#.
         [1,1,1]]  // ###
 
 // Rotation 90° (right)
-shape: [[1,0],    // ##
+shape: [[1,0],    // #.
         [1,1],    // ##
         [1,0]]    // #.
 
@@ -194,6 +167,7 @@ shape: [[0,1],    // .#
 
 **To check piece orientation:**
 ```javascript
+const state = await tetris.getGameState();
 const piece = state.currentPiece;
 const rows = piece.shape.length;
 const cols = piece.shape[0].length;
@@ -246,15 +220,29 @@ const result = await tetris.moveLeft();
 ```javascript
 {
     success: true,   // Always true (API call succeeded)
-    x: 2             // Current X position after attempted move
+    x: 2             // Current X position after move attempt
 }
 ```
 
-**Notes:**
-- API call always returns `success: true` (the command was executed)
-- If the piece cannot move left (collision or boundary), it stays in its original position
-- To verify if movement occurred, compare the X position before and after the call
-- The returned `x` value is the piece's current position (may be unchanged if blocked)
+**Behavior:**
+- The piece attempts to move one column to the left
+- If blocked by a wall or other pieces, the piece stays in place
+- The `x` value reflects the final position (may be unchanged if blocked)
+- To detect if movement occurred, store the X position before calling and compare:
+
+```javascript
+const stateBefore = await tetris.getGameState();
+const oldX = stateBefore.currentPiece.x;
+
+await tetris.moveLeft();
+
+const stateAfter = await tetris.getGameState();
+if (stateAfter.currentPiece.x < oldX) {
+    console.log('Moved left successfully');
+} else {
+    console.log('Blocked - could not move left');
+}
+```
 
 ### Move Right
 
@@ -266,15 +254,29 @@ const result = await tetris.moveRight();
 ```javascript
 {
     success: true,   // Always true (API call succeeded)
-    x: 4             // Current X position after attempted move
+    x: 4             // Current X position after move attempt
 }
 ```
 
-**Notes:**
-- API call always returns `success: true` (the command was executed)
-- If the piece cannot move right (collision or boundary), it stays in its original position
-- To verify if movement occurred, compare the X position before and after the call
-- The returned `x` value is the piece's current position (may be unchanged if blocked)
+**Behavior:**
+- The piece attempts to move one column to the right
+- If blocked by a wall or other pieces, the piece stays in place
+- The `x` value reflects the final position (may be unchanged if blocked)
+- To detect if movement occurred, store the X position before calling and compare:
+
+```javascript
+const stateBefore = await tetris.getGameState();
+const oldX = stateBefore.currentPiece.x;
+
+await tetris.moveRight();
+
+const stateAfter = await tetris.getGameState();
+if (stateAfter.currentPiece.x > oldX) {
+    console.log('Moved right successfully');
+} else {
+    console.log('Blocked - could not move right');
+}
+```
 
 ### Move Down (Soft Drop)
 
@@ -285,20 +287,35 @@ const result = await tetris.moveDown();
 **Response:**
 ```javascript
 {
-    success: true,   // true = piece moved down, false = piece locked in place
+    success: true,   // true = moved down, false = locked in place
     y: 1             // Current Y position
 }
 ```
 
-**Notes:**
-- Moves the piece down by one row
-- **`success: true`**: Piece successfully moved down to a new row
-- **`success: false`**: Piece hit the bottom or another piece and has been **locked in place**
-  - When locked, a new piece spawns automatically (from `currentPiece`)
+**Behavior:**
+- **`success: true`**: Piece successfully moved down one row
+- **`success: false`**: Piece could not move down and has been **locked in place**
+  - The piece hit the bottom or collided with other pieces
+  - A new piece automatically spawns at the top
   - The previous `nextPiece` becomes the new `currentPiece`
-  - A new `nextPiece` is generated
-- After receiving `success: false`, call `tetris.getGameState()` to get the new piece information
-- The returned `y` value is the piece's final position before locking
+  - A new `nextPiece` is generated for preview
+  - Lines may be cleared if any rows are complete
+
+**Important:** After `success: false`, always call `getGameState()` to get:
+- The new current piece
+- Updated score (if lines were cleared)
+- The new next piece
+
+```javascript
+const result = await tetris.moveDown();
+
+if (!result.success) {
+    console.log('Piece locked!');
+    const newState = await tetris.getGameState();
+    console.log('New piece:', newState.currentPiece.type);
+    console.log('Score:', newState.score);
+}
+```
 
 ### Hard Drop
 
@@ -319,7 +336,7 @@ const result = await tetris.hardDrop();
 - The piece instantly falls to the lowest possible position
 - The piece is immediately locked in place
 - A new piece spawns automatically after locking
-- Always call `tetris.getGameState()` or `tetris.getBoardState()` after hard drop to get:
+- Always call `getGameState()` after hard drop to get:
   - The new current piece
   - Updated board state
   - New score (if lines were cleared)
@@ -335,80 +352,75 @@ const result = await tetris.rotate();
 **Response:**
 ```javascript
 {
-    success: true    // Always true (API call succeeded, but rotation may be blocked)
+    success: true    // Always true (API call succeeded)
 }
 ```
 
-**Important:** The API always returns `success: true` even if rotation was blocked by collision. To verify if rotation actually occurred, compare the piece's `shape` matrix before and after:
+**Behavior:**
+- Attempts to rotate the piece 90° clockwise
+- If rotation causes collision (wall, floor, or blocks), rotation is **rejected** and the piece stays in its original orientation
+- The API always returns `success: true` (the command was executed), regardless of whether rotation occurred
+
+**To verify if rotation occurred:**
 
 ```javascript
-const before = await tetris.getBoardState();
+const before = await tetris.getGameState();
 const oldShape = JSON.stringify(before.currentPiece.shape);
 
 await tetris.rotate();
 
-const after = await tetris.getBoardState();
+const after = await tetris.getGameState();
 const newShape = JSON.stringify(after.currentPiece.shape);
 
-if (oldShape === newShape) {
-    console.log('Rotation blocked by collision');
+if (oldShape !== newShape) {
+    console.log('Rotated successfully');
 } else {
-    console.log('Rotation successful');
+    console.log('Rotation blocked');
 }
 ```
 
-**Rotation Behavior:**
+**Rotation Mechanics:**
 
-1. **Shape Matrix Transformation:**
-   - The piece's `shape` matrix is rotated 90° clockwise
-   - Algorithm: Transpose the matrix, then reverse each row
-   - Example:
+1. **Shape Transformation:**
+   - The `shape` matrix rotates 90° clockwise
+   - Algorithm: Transpose matrix, then reverse each row
    ```javascript
-   // Before rotation (T-piece, 0°):
-   [[0,1,0],
-    [1,1,1]]
-   
-   // After rotation (T-piece, 90°):
-   [[1,0],
-    [1,1],
-    [1,0]]
+   // T-piece before: 2×3        // T-piece after: 3×2
+   [[0,1,0],                     [[1,0],
+    [1,1,1]]                      [1,1],
+                                   [1,0]]
    ```
 
-2. **Coordinate Behavior:**
-   - **The (x, y) position remains unchanged**
-   - The piece rotates around its top-left corner (origin point)
-   - Only the `shape` matrix changes, not the position
-   
-3. **Collision Handling:**
-   - If rotation causes collision with walls, floor, or other pieces:
-     - The rotation is **rejected**
-     - The piece reverts to its original orientation
-     - **No wall kick or position adjustment is performed**
-   - If rotation is rejected:
-     - `success: true` is still returned (API call succeeded)
-     - But the piece orientation remains unchanged
-     - Call `getBoardState()` to verify if rotation occurred
+2. **Position Behavior:**
+   - The (x, y) coordinates **do not change**
+   - Rotation occurs around the top-left corner of the shape matrix
+   - Only the shape changes, not the position
 
-**Example - Rotation Near Wall:**
+3. **Collision Handling:**
+   - If the rotated shape collides with walls, floor, or blocks:
+     - Rotation is **rejected**
+     - Shape reverts to original orientation
+     - **No wall kick** (automatic position adjustment)
+   - Always check the shape after rotation to verify if it changed
+
+**Example - Blocked Rotation:**
 ```javascript
-// Piece at x=9, y=5 with horizontal I-piece (4×1)
-// Current: [[1,1,1,1]]
-const before = await tetris.getBoardState();
-console.log(before.currentPiece.shape); // [[1,1,1,1]]
+// I-piece at x=9 (near right wall), horizontal orientation
+const before = await tetris.getGameState();
+console.log(before.currentPiece.shape); // [[1,1,1,1]] (4×1)
 
 await tetris.rotate();
 
-const after = await tetris.getBoardState();
-// Rotation rejected - would extend beyond right wall
+const after = await tetris.getGameState();
+// Rotation blocked - vertical (1×4) would exceed right boundary
 console.log(after.currentPiece.shape); // Still [[1,1,1,1]]
-console.log(after.currentPiece.x);     // Still 9
-console.log(after.currentPiece.y);     // Still 5
+console.log(after.currentPiece.x);     // Still 9 (unchanged)
 ```
 
-**Notes:**
-- Always call `getBoardState()` after rotation to verify the new orientation
-- The piece's bounding box size changes with rotation (e.g., 4×1 becomes 1×4)
-- No automatic position adjustment - rotation fails if new shape doesn't fit
+**Key Points:**
+- Call `getGameState()` after rotation to verify if the shape changed
+- Bounding box changes with rotation (e.g., 4×1 ↔ 1×4)
+- No wall kick - rotation fails silently if the new shape doesn't fit
 
 ---
 
@@ -432,21 +444,21 @@ if (state.captchaRequired) {
 ### Submitting CAPTCHA
 
 ```javascript
-const result = await tetris.submitCaptcha(captchaId, userCode);
+const result = await tetris.submitCaptcha(captchaId, code);
 ```
 
 **Parameters:**
 - `captchaId` (string): The CAPTCHA challenge ID from `getGameState()`
 - `code` (string): The user's entered code (4 characters)
 
-**Response:**
+**Response on Success:**
 ```javascript
 {
     success: true
 }
 ```
 
-**If verification fails:**
+**Response on Failure:**
 ```javascript
 {
     success: false,
@@ -454,26 +466,49 @@ const result = await tetris.submitCaptcha(captchaId, userCode);
 }
 ```
 
+**What Happens After Successful Verification:**
+1. The CAPTCHA challenge is cleared
+2. `captchaVerified` event is triggered (see Event System)
+3. Game automatically resumes
+4. Subsequent `getGameState()` calls will show `captchaRequired: false`
+
 **Example Flow:**
 ```javascript
+// Method 1: Using API return value
 const state = await tetris.getGameState();
 
 if (state.captchaRequired) {
-    // Display CAPTCHA image to user/AI
+    console.log('CAPTCHA challenge detected');
     const imageUrl = tetris.getCaptchaImageUrl(state.captchaId);
     
     // Get the code (from OCR or user input)
     const code = await recognizeCaptcha(imageUrl); // Your OCR function
     
-    // Submit
-    const result = await tetris.submitCaptcha(state.captchaId, code);
-    
-    if (result.success) {
+    // Submit and check result
+    try {
+        const result = await tetris.submitCaptcha(state.captchaId, code);
         console.log('CAPTCHA verified! Game continues.');
-    } else {
-        console.error('CAPTCHA failed:', result.error);
+        
+        // Verify the challenge is cleared
+        const newState = await tetris.getGameState();
+        console.log('CAPTCHA cleared:', !newState.captchaRequired); // true
+    } catch (error) {
+        console.error('CAPTCHA failed:', error.message);
+        // Need to get new CAPTCHA and retry
     }
 }
+
+// Method 2: Using event listener (recommended for automated systems)
+tetris.on('captchaRequired', async (data) => {
+    console.log('CAPTCHA required:', data.captchaId);
+    const code = await recognizeCaptcha(data.imageUrl);
+    await tetris.submitCaptcha(data.captchaId, code);
+});
+
+tetris.on('captchaVerified', (data) => {
+    console.log('CAPTCHA verification successful!');
+    // Game has automatically resumed, continue playing
+});
 ```
 
 ---
@@ -514,8 +549,8 @@ unsubscribe();
 |-------|------|-------------|
 | `gameOver` | `{score, rank, highestScore}` | Game has ended |
 | `scoreUpdate` | `{score, lines, level, linesCleared}` | Score or lines changed |
-| `captchaRequired` | `{captchaId, imageUrl}` | CAPTCHA challenge triggered |
-| `captchaVerified` | `{success}` | CAPTCHA verification completed |
+| `captchaRequired` | `{captchaId, imageUrl}` | CAPTCHA challenge triggered, game paused |
+| `captchaVerified` | `{success: true}` | CAPTCHA verified successfully, game resumed |
 
 ---
 
