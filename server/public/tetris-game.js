@@ -514,6 +514,7 @@ function handleWebSocketMessage(message) {
             break;
         case 'captchaVerified':
             if (message.success) {
+                captchaPending = null;
                 hideCaptchaModal();
                 showNotification('验证通过，游戏继续！');
                 emitSdkEvent('captchaVerified', { success: true });
@@ -586,7 +587,9 @@ async function verifyCaptcha() {
         const result = await response.json();
         
         if (result.success) {
-            // 验证成功，恢复游戏
+            // 验证成功，清除验证码状态
+            captchaPending = null;
+            // 恢复游戏
             hideCaptchaModal();
             gameState.playing = true;
             lastDropTime = Date.now();
